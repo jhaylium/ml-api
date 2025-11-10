@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Request, JSONResponse
-from pydantic import BaseModel
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, RootModel
 from typing import List, Dict, Optional
 import polars as pl
 import numpy as np
@@ -84,8 +85,8 @@ class PCARequest(BaseModel):
     s3_uri: Optional[str] = None
 
 
-class PCAModelLoadings(BaseModel):
-    __root__: Dict[str, List[float]]
+class PCAModelLoadings(RootModel[Dict[str, List[float]]]):
+    root: Dict[str, List[float]]
 
 
 class PCAResponse(BaseModel):
@@ -155,7 +156,7 @@ async def pca_endpoint(request: PCARequest, http_request: Request):
     
     return PCAResponse(
         reduced_features=reduced_features,
-        model_loadings=PCAModelLoadings(__root__=model_loadings_dict)
+        model_loadings=PCAModelLoadings(root=model_loadings_dict)
     )
 
 
