@@ -38,7 +38,11 @@ def test_exclusivity_error():
     }
     response = client.post("/api/pca", json=payload)
     assert response.status_code == 400
-    assert "Cannot provide both 'data' and 's3_uri'" in response.json()["detail"]
+    assert response.json() == {
+        "status_code": 400,
+        "error_type": "DataInputError",
+        "detail_message": "Cannot provide both 'data' and 's3_uri'"
+    }
 
 
 def test_s3_header_error():
@@ -49,7 +53,11 @@ def test_s3_header_error():
     }
     response = client.post("/api/pca", json=payload)
     assert response.status_code == 400
-    assert "S3 headers are required" in response.json()["detail"]
+    assert response.json() == {
+        "status_code": 400,
+        "error_type": "DataInputError",
+        "detail_message": "S3 headers are required for s3_uri: X-Aws-Access-Key-Id, X-Aws-Secret-Access-Key, X-Aws-Region"
+    }
 
 
 @mock_s3
@@ -117,7 +125,11 @@ def test_linear_regression_missing_target_col():
     }
     response = client.post("/api/linear_regression", json=payload)
     assert response.status_code == 400
-    assert "Target column 'y' not found in data." in response.json()["detail"]
+    assert response.json() == {
+        "status_code": 400,
+        "error_type": "ValidationError",
+        "detail_message": "Target column 'y' not found in data."
+    }
 
 
 def test_linear_regression_normalize():

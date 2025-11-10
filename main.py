@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request, JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import polars as pl
@@ -12,6 +12,66 @@ from sklearn.pipeline import Pipeline
 from data_loader import get_dataframe
 
 app = FastAPI()
+
+
+# Custom Exceptions
+class DataInputError(Exception):
+    """Raised when there are issues with input data format or requirements."""
+    pass
+
+
+class ValidationError(Exception):
+    """Raised when validation fails (e.g., missing required fields)."""
+    pass
+
+
+class RemoteAccessError(Exception):
+    """Raised when there are errors accessing remote resources (e.g., S3)."""
+    pass
+
+
+# Error Response Model
+class ErrorResponse(BaseModel):
+    status_code: int
+    error_type: str
+    detail_message: str
+
+
+# Exception Handlers
+@app.exception_handler(DataInputError)
+async def data_input_exception_handler(request: Request, exc: DataInputError):
+    return JSONResponse(
+        status_code=400,
+        content={
+            "status_code": 400,
+            "error_type": "DataInputError",
+            "detail_message": str(exc)
+        }
+    )
+
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request: Request, exc: ValidationError):
+    return JSONResponse(
+        status_code=400,
+        content={
+            "status_code": 400,
+            "error_type": "ValidationError",
+            "detail_message": str(exc)
+        }
+    )
+
+
+@app.exception_handler(RemoteAccessError)
+async def remote_access_exception_handler(request: Request, exc: RemoteAccessError):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status_code": 500,
+            "error_type": "RemoteAccessError",
+            "detail_message": str(exc)
+        }
+    )
 
 
 class PCAModelConfig(BaseModel):
@@ -107,7 +167,7 @@ async def linear_regression_endpoint(request: LinearRegressionRequest, http_requ
     # Data Separation
     target_col = request.model_conf.target_variable_name
     if target_col not in df.columns:
-        raise HTTPException(status_code=400, detail=f"Target column '{target_col}' not found in data.")
+        raise ValidationError(f"Target column '{target_col}' not found in data.")
     
     X = df.drop(target_col)
     y = df.select(target_col)
@@ -182,7 +242,7 @@ async def logistic_regression_endpoint(request: LogisticRegressionRequest, http_
     # Data Separation
     target_col = request.model_conf.target_variable_name
     if target_col not in df.columns:
-        raise HTTPException(status_code=400, detail=f"Target column '{target_col}' not found in data.")
+        raise ValidationError(f"Target column '{target_col}' not found in data.")
     
     X = df.drop(target_col)
     y = df.select(target_col)
