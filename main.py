@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import polars as pl
@@ -9,6 +9,7 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import r2_score, mean_squared_error, accuracy_score, f1_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from data_loader import get_dataframe
 
 app = FastAPI()
 
@@ -19,7 +20,7 @@ class PCAModelConfig(BaseModel):
 
 class PCARequest(BaseModel):
     model_conf: PCAModelConfig
-    data: List[dict]
+    data: Optional[List[dict]] = None
     s3_uri: Optional[str] = None
 
 
@@ -40,7 +41,7 @@ class LinearRegressionModelConfig(BaseModel):
 
 class LinearRegressionRequest(BaseModel):
     model_conf: LinearRegressionModelConfig
-    data: List[dict]
+    data: Optional[List[dict]] = None
     s3_uri: Optional[str] = None
 
 
@@ -58,7 +59,7 @@ class LogisticRegressionModelConfig(BaseModel):
 
 class LogisticRegressionRequest(BaseModel):
     model_conf: LogisticRegressionModelConfig
-    data: List[dict]
+    data: Optional[List[dict]] = None
     s3_uri: Optional[str] = None
 
 
@@ -74,13 +75,9 @@ def health_check():
 
 
 @app.post("/api/pca", response_model=PCAResponse)
-def pca_endpoint(request: PCARequest):
-    # Input Validation: Check if s3_uri is present
-    if request.s3_uri is not None:
-        raise HTTPException(status_code=400, detail="s3_uri is not implemented yet")
-    
-    # Data Conversion: Convert request.data to Polars DataFrame
-    df = pl.from_dicts(request.data)
+async def pca_endpoint(request: PCARequest, http_request: Request):
+    # Load data from either direct data or S3
+    df = await get_dataframe(request, http_request)
     
     # ML Execution
     n_components = request.model_conf.desired_features
@@ -103,13 +100,9 @@ def pca_endpoint(request: PCARequest):
 
 
 @app.post("/api/linear_regression", response_model=LinearRegressionResponse)
-def linear_regression_endpoint(request: LinearRegressionRequest):
-    # Input Validation: Check if s3_uri is present
-    if request.s3_uri is not None:
-        raise HTTPException(status_code=400, detail="s3_uri is not implemented yet")
-    
-    # Data Conversion: Convert request.data to Polars DataFrame
-    df = pl.from_dicts(request.data)
+async def linear_regression_endpoint(request: LinearRegressionRequest, http_request: Request):
+    # Load data from either direct data or S3
+    df = await get_dataframe(request, http_request)
     
     # Data Separation
     target_col = request.model_conf.target_variable_name
@@ -182,13 +175,9 @@ def linear_regression_endpoint(request: LinearRegressionRequest):
 
 
 @app.post("/api/logistic_regression", response_model=LogisticRegressionResponse)
-def logistic_regression_endpoint(request: LogisticRegressionRequest):
-    # Input Validation: Check if s3_uri is present
-    if request.s3_uri is not None:
-        raise HTTPException(status_code=400, detail="s3_uri is not implemented yet")
-    
-    # Data Conversion: Convert request.data to Polars DataFrame
-    df = pl.from_dicts(request.data)
+async def logistic_regression_endpoint(request: LogisticRegressionRequest, http_request: Request):
+    # Load data from either direct data or S3
+    df = await get_dataframe(request, http_request)
     
     # Data Separation
     target_col = request.model_conf.target_variable_name

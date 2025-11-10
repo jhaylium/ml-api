@@ -1,4 +1,7 @@
 from fastapi.testclient import TestClient
+from moto import mock_s3
+import boto3
+import polars as pl
 from main import app
 
 client = TestClient(app)
@@ -26,7 +29,8 @@ def test_pca_endpoint_logic():
     assert len(json_response["model_loadings"]["PC1"]) == 3
 
 
-def test_pca_s3_not_implemented():
+def test_exclusivity_error():
+    """Test that providing both data and s3_uri raises an error."""
     payload = {
         "model_conf": {"desired_features": 2},
         "data": [{"f1": 1, "f2": 10, "f3": 100}],
@@ -34,7 +38,62 @@ def test_pca_s3_not_implemented():
     }
     response = client.post("/api/pca", json=payload)
     assert response.status_code == 400
-    assert "s3_uri is not implemented yet" in response.json()["detail"]
+    assert "Cannot provide both 'data' and 's3_uri'" in response.json()["detail"]
+
+
+def test_s3_header_error():
+    """Test that providing s3_uri without headers raises an error."""
+    payload = {
+        "model_conf": {"desired_features": 2},
+        "s3_uri": "s3://bucket/path"
+    }
+    response = client.post("/api/pca", json=payload)
+    assert response.status_code == 400
+    assert "S3 headers are required" in response.json()["detail"]
+
+
+@mock_s3
+def test_s3_success():
+    """Test successful S3 data loading with mocked S3."""
+    # Create mock S3 bucket and upload parquet file
+    s3_client = boto3.client('s3', region_name='us-east-1')
+    bucket_name = 'test-bucket'
+    key = 'test-data.parquet'
+    
+    # Create test data
+    test_data = pl.DataFrame({
+        'f1': [1, 2, 3],
+        'f2': [10, 20, 25],
+        'f3': [100, 120, 110]
+    })
+    
+    # Convert to parquet bytes
+    parquet_bytes = test_data.write_parquet()
+    
+    # Create bucket and upload
+    s3_client.create_bucket(Bucket=bucket_name)
+    s3_client.put_object(Bucket=bucket_name, Key=key, Body=parquet_bytes)
+    
+    # Test request
+    payload = {
+        "model_conf": {"desired_features": 2},
+        "s3_uri": f"s3://{bucket_name}/{key}"
+    }
+    
+    headers = {
+        "X-Aws-Access-Key-Id": "test-key",
+        "X-Aws-Secret-Access-Key": "test-secret",
+        "X-Aws-Region": "us-east-1"
+    }
+    
+    response = client.post("/api/pca", json=payload, headers=headers)
+    assert response.status_code == 200
+    json_response = response.json()
+    
+    # Assert structure of the response
+    assert isinstance(json_response["reduced_features"], list)
+    assert all(isinstance(row, list) for row in json_response["reduced_features"])
+    assert all(len(row) == 2 for row in json_response["reduced_features"])
 
 
 def test_linear_regression_stub():
