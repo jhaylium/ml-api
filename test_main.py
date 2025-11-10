@@ -60,3 +60,32 @@ def test_linear_regression_missing_target_col():
     assert response.status_code == 400
     assert "Target column 'y' not found in data." in response.json()["detail"]
 
+
+def test_linear_regression_normalize():
+    base_payload = {
+        "model_config": {"target_variable_name": "y"},
+        "data": [
+            {"x": 1, "y": 10}, {"x": 2, "y": 20}, {"x": 3, "y": 30},
+            {"x": 4, "y": 40}, {"x": 5, "y": 50}, {"x": 6, "y": 60},
+            {"x": 7, "y": 70}, {"x": 8, "y": 80}, {"x": 9, "y": 90},
+            {"x": 10, "y": 100}
+        ]
+    }
+    
+    # Test with normalize=False
+    payload_unscaled = {**base_payload, "model_config": {**base_payload["model_config"], "normalize": False}}
+    response_unscaled = client.post("/api/linear_regression", json=payload_unscaled)
+    
+    # Test with normalize=True
+    payload_scaled = {**base_payload, "model_config": {**base_payload["model_config"], "normalize": True}}
+    response_scaled = client.post("/api/linear_regression", json=payload_scaled)
+    
+    assert response_unscaled.status_code == 200
+    assert response_scaled.status_code == 200
+    
+    # Assert that predictions differ when normalization is applied
+    assert response_unscaled.json()["model_predictions"] != response_scaled.json()["model_predictions"]
+    
+    # Assert that coefficients differ when normalization is applied
+    assert response_unscaled.json()["model_results"]["coefficients"] != response_scaled.json()["model_results"]["coefficients"]
+
