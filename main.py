@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
 from typing import List, Dict, Optional
 import polars as pl
 import numpy as np
@@ -14,13 +14,13 @@ class PCAModelConfig(BaseModel):
 
 
 class PCARequest(BaseModel):
-    model_config: PCAModelConfig
+    model_conf: PCAModelConfig
     data: List[dict]
     s3_uri: Optional[str] = None
 
 
-class PCAModelLoadings(BaseModel):
-    __root__: Dict[str, List[float]]
+class PCAModelLoadings(RootModel[Dict[str, List[float]]]):
+    root: Dict[str, List[float]]
 
 
 class PCAResponse(BaseModel):
@@ -35,7 +35,7 @@ class LinearRegressionModelConfig(BaseModel):
 
 
 class LinearRegressionRequest(BaseModel):
-    model_config: LinearRegressionModelConfig
+    model_conf: LinearRegressionModelConfig
     data: List[dict]
     s3_uri: Optional[str] = None
 
@@ -61,7 +61,7 @@ def pca_endpoint(request: PCARequest):
     df = pl.from_dicts(request.data)
     
     # ML Execution
-    n_components = request.model_config.desired_features
+    n_components = request.model_conf.desired_features
     pca = PCA(n_components=n_components)
     reduced_data = pca.fit_transform(df.to_numpy())
     
@@ -76,7 +76,7 @@ def pca_endpoint(request: PCARequest):
     
     return PCAResponse(
         reduced_features=reduced_features,
-        model_loadings=PCAModelLoadings(__root__=model_loadings_dict)
+        model_loadings=PCAModelLoadings(root=model_loadings_dict)
     )
 
 
@@ -90,7 +90,7 @@ def linear_regression_endpoint(request: LinearRegressionRequest):
     df = pl.from_dicts(request.data)
     
     # Data Separation
-    target_col = request.model_config.target_variable_name
+    target_col = request.model_conf.target_variable_name
     if target_col not in df.columns:
         raise HTTPException(status_code=400, detail=f"Target column '{target_col}' not found in data.")
     
