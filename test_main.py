@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from moto import mock_s3
+from moto import mock_aws
 import boto3
 import polars as pl
 from main import app
@@ -60,7 +60,7 @@ def test_s3_header_error():
     }
 
 
-@mock_s3
+@mock_aws
 def test_s3_success():
     """Test successful S3 data loading with mocked S3."""
     # Create mock S3 bucket and upload parquet file
