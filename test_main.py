@@ -12,7 +12,7 @@ def test_health_check():
 
 def test_pca_endpoint_logic():
     payload = {
-        "model_config": {"desired_features": 2},
+        "model_conf": {"desired_features": 2},
         "data": [{"f1": 1, "f2": 10, "f3": 100}, {"f1": 2, "f2": 20, "f3": 120}, {"f1": 3, "f2": 25, "f3": 110}]
     }
     response = client.post("/api/pca", json=payload)
@@ -28,7 +28,7 @@ def test_pca_endpoint_logic():
 
 def test_pca_s3_not_implemented():
     payload = {
-        "model_config": {"desired_features": 2},
+        "model_conf": {"desired_features": 2},
         "data": [{"f1": 1, "f2": 10, "f3": 100}],
         "s3_uri": "s3://bucket/path"
     }
@@ -39,7 +39,7 @@ def test_pca_s3_not_implemented():
 
 def test_linear_regression_stub():
     payload = {
-        "model_config": {"target_variable_name": "y"},
+        "model_conf": {"target_variable_name": "y"},
         "data": [{"x": 1, "y": 10}, {"x": 2, "y": 20}, {"x": 3, "y": 30}]
     }
     response = client.post("/api/linear_regression", json=payload)
@@ -53,7 +53,7 @@ def test_linear_regression_stub():
 
 def test_linear_regression_missing_target_col():
     payload = {
-        "model_config": {"target_variable_name": "y"},
+        "model_conf": {"target_variable_name": "y"},
         "data": [{"x": 1}, {"x": 2}, {"x": 3}]
     }
     response = client.post("/api/linear_regression", json=payload)
@@ -63,7 +63,7 @@ def test_linear_regression_missing_target_col():
 
 def test_linear_regression_normalize():
     base_payload = {
-        "model_config": {"target_variable_name": "y"},
+        "model_conf": {"target_variable_name": "y"},
         "data": [
             {"x": 1, "y": 10}, {"x": 2, "y": 20}, {"x": 3, "y": 30},
             {"x": 4, "y": 40}, {"x": 5, "y": 50}, {"x": 6, "y": 60},
@@ -73,11 +73,11 @@ def test_linear_regression_normalize():
     }
     
     # Test with normalize=False
-    payload_unscaled = {**base_payload, "model_config": {**base_payload["model_config"], "normalize": False}}
+    payload_unscaled = {**base_payload, "model_conf": {**base_payload["model_conf"], "normalize": False}}
     response_unscaled = client.post("/api/linear_regression", json=payload_unscaled)
     
     # Test with normalize=True
-    payload_scaled = {**base_payload, "model_config": {**base_payload["model_config"], "normalize": True}}
+    payload_scaled = {**base_payload, "model_conf": {**base_payload["model_conf"], "normalize": True}}
     response_scaled = client.post("/api/linear_regression", json=payload_scaled)
     
     assert response_unscaled.status_code == 200
@@ -88,4 +88,30 @@ def test_linear_regression_normalize():
     
     # Assert that coefficients differ when normalization is applied
     assert response_unscaled.json()["model_results"]["coefficients"] != response_scaled.json()["model_results"]["coefficients"]
+
+
+def test_logistic_regression_logic():
+    payload = {
+        "model_conf": {"target_variable_name": "y"},
+        "data": [
+            {"x1": 1, "x2": 2, "y": 0},
+            {"x1": 2, "x2": 3, "y": 0},
+            {"x1": 3, "x2": 1, "y": 0},
+            {"x1": 1, "x2": 1, "y": 0},
+            {"x1": 2, "x2": 2, "y": 0},
+            {"x1": 10, "x2": 1, "y": 1},
+            {"x1": 11, "x2": 2, "y": 1},
+            {"x1": 12, "x2": 3, "y": 1},
+            {"x1": 10, "x2": 4, "y": 1},
+            {"x1": 11, "x2": 5, "y": 1}
+        ]
+    }
+    response = client.post("/api/logistic_regression", json=payload)
+    assert response.status_code == 200
+    json_response = response.json()
+    
+    # Assert all keys in model_performance are present
+    assert "accuracy" in json_response["model_performance"]
+    assert "f1_score" in json_response["model_performance"]
+    assert "roc_auc" in json_response["model_performance"]
 

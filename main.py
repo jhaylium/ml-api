@@ -5,8 +5,8 @@ import polars as pl
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import r2_score, mean_squared_error, accuracy_score, f1_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
@@ -18,7 +18,7 @@ class PCAModelConfig(BaseModel):
 
 
 class PCARequest(BaseModel):
-    model_config: PCAModelConfig
+    model_conf: PCAModelConfig
     data: List[dict]
     s3_uri: Optional[str] = None
 
@@ -39,12 +39,30 @@ class LinearRegressionModelConfig(BaseModel):
 
 
 class LinearRegressionRequest(BaseModel):
-    model_config: LinearRegressionModelConfig
+    model_conf: LinearRegressionModelConfig
     data: List[dict]
     s3_uri: Optional[str] = None
 
 
 class LinearRegressionResponse(BaseModel):
+    model_predictions: List[float]
+    model_performance: dict
+    model_results: dict
+
+
+class LogisticRegressionModelConfig(BaseModel):
+    target_variable_name: str
+    normalize: bool = False
+    regularization_strength: float = 1.0
+
+
+class LogisticRegressionRequest(BaseModel):
+    model_conf: LogisticRegressionModelConfig
+    data: List[dict]
+    s3_uri: Optional[str] = None
+
+
+class LogisticRegressionResponse(BaseModel):
     model_predictions: List[float]
     model_performance: dict
     model_results: dict
@@ -65,7 +83,7 @@ def pca_endpoint(request: PCARequest):
     df = pl.from_dicts(request.data)
     
     # ML Execution
-    n_components = request.model_config.desired_features
+    n_components = request.model_conf.desired_features
     pca = PCA(n_components=n_components)
     reduced_data = pca.fit_transform(df.to_numpy())
     
@@ -94,7 +112,7 @@ def linear_regression_endpoint(request: LinearRegressionRequest):
     df = pl.from_dicts(request.data)
     
     # Data Separation
-    target_col = request.model_config.target_variable_name
+    target_col = request.model_conf.target_variable_name
     if target_col not in df.columns:
         raise HTTPException(status_code=400, detail=f"Target column '{target_col}' not found in data.")
     
@@ -110,13 +128,13 @@ def linear_regression_endpoint(request: LinearRegressionRequest):
     )
     
     # Model Config
-    fit_intercept = not request.model_config.force_intercept
+    fit_intercept = not request.model_conf.force_intercept
     
     # Build Pipeline
     pipeline_steps = []
     
     # Normalization Logic
-    if request.model_config.normalize:
+    if request.model_conf.normalize:
         pipeline_steps.append(('scaler', StandardScaler()))
     
     # Model Step
@@ -157,6 +175,83 @@ def linear_regression_endpoint(request: LinearRegressionRequest):
     }
     
     return LinearRegressionResponse(
+        model_predictions=model_predictions,
+        model_performance=model_performance,
+        model_results=model_results
+    )
+
+
+@app.post("/api/logistic_regression", response_model=LogisticRegressionResponse)
+def logistic_regression_endpoint(request: LogisticRegressionRequest):
+    # Input Validation: Check if s3_uri is present
+    if request.s3_uri is not None:
+        raise HTTPException(status_code=400, detail="s3_uri is not implemented yet")
+    
+    # Data Conversion: Convert request.data to Polars DataFrame
+    df = pl.from_dicts(request.data)
+    
+    # Data Separation
+    target_col = request.model_conf.target_variable_name
+    if target_col not in df.columns:
+        raise HTTPException(status_code=400, detail=f"Target column '{target_col}' not found in data.")
+    
+    X = df.drop(target_col)
+    y = df.select(target_col)
+    
+    # Train/Test Split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X.to_numpy(), 
+        y.to_numpy().flatten(), 
+        test_size=0.2, 
+        random_state=42
+    )
+    
+    # Model Config
+    C = request.model_conf.regularization_strength
+    
+    # Build Pipeline
+    pipeline_steps = []
+    
+    # Normalization Logic
+    if request.model_conf.normalize:
+        pipeline_steps.append(('scaler', StandardScaler()))
+    
+    # Model Step
+    pipeline_steps.append(('model', LogisticRegression(C=C, max_iter=1000)))
+    
+    # Model Training
+    pipeline = Pipeline(steps=pipeline_steps)
+    pipeline.fit(X_train, y_train)
+    
+    # Prediction & Metrics
+    y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
+    y_pred_class = pipeline.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred_class)
+    f1 = f1_score(y_test, y_pred_class)
+    auc = roc_auc_score(y_test, y_pred_proba)
+    
+    # Response Formatting
+    model_predictions = [float(p) for p in y_pred_proba]
+    model_performance = {
+        "accuracy": float(accuracy),
+        "f1_score": float(f1),
+        "roc_auc": float(auc)
+    }
+    
+    # Get model from pipeline to access coefficients
+    model_step = pipeline.named_steps['model']
+    
+    # Get column names for coefficients
+    X_columns = X.columns
+    coefficients_dict = dict(zip(X_columns, model_step.coef_[0]))
+    coefficients_dict = {k: float(v) for k, v in coefficients_dict.items()}
+    
+    model_results = {
+        "intercept": float(model_step.intercept_[0]),
+        "coefficients": coefficients_dict
+    }
+    
+    return LogisticRegressionResponse(
         model_predictions=model_predictions,
         model_performance=model_performance,
         model_results=model_results
