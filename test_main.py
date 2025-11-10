@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
-from moto import mock_s3
+from moto import mock_aws
 import boto3
+import io
 import polars as pl
 from main import app
 
@@ -60,7 +61,7 @@ def test_s3_header_error():
     }
 
 
-@mock_s3
+@mock_aws
 def test_s3_success():
     """Test successful S3 data loading with mocked S3."""
     # Create mock S3 bucket and upload parquet file
@@ -76,7 +77,9 @@ def test_s3_success():
     })
     
     # Convert to parquet bytes
-    parquet_bytes = test_data.write_parquet()
+    parquet_buffer = io.BytesIO()
+    test_data.write_parquet(parquet_buffer)
+    parquet_bytes = parquet_buffer.getvalue()
     
     # Create bucket and upload
     s3_client.create_bucket(Bucket=bucket_name)
@@ -111,11 +114,21 @@ def test_linear_regression_stub():
     }
     response = client.post("/api/linear_regression", json=payload)
     assert response.status_code == 200
-    assert response.json() == {
-        "model_predictions": [10.0, 20.0, 30.0],
-        "model_performance": {"r2_score": 0.95, "mse": 2.5},
-        "model_results": {"coefficients": [1.0, 2.0], "intercept": 0.5}
-    }
+    json_response = response.json()
+    
+    # Verify response structure (actual implementation, not stubbed)
+    assert "model_predictions" in json_response
+    assert isinstance(json_response["model_predictions"], list)
+    assert all(isinstance(p, (int, float)) for p in json_response["model_predictions"])
+    
+    assert "model_performance" in json_response
+    assert "r_squared" in json_response["model_performance"]
+    assert "mean_squared_error" in json_response["model_performance"]
+    
+    assert "model_results" in json_response
+    assert "intercept" in json_response["model_results"]
+    assert "coefficients" in json_response["model_results"]
+    assert isinstance(json_response["model_results"]["coefficients"], dict)
 
 
 def test_linear_regression_missing_target_col():
